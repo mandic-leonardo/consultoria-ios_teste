@@ -1,0 +1,119 @@
+---
+format_version: '8'
+default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
+project_type: ios
+trigger_map:
+- push_branch: "*"
+  workflow: sanity_check
+- pull_request_target_branch: develop
+  workflow: release_alpha
+- pull_request_source_branch: master
+  workflow: sanity_check
+- workflow: sanity_check
+  pull_request_target_branch: "*"
+workflows:
+  sanity_check:
+    steps:
+    - activate-ssh-key@4.0.5:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@4.0.18:
+        inputs:
+        - update_submodules: 'no'
+    - cache-pull@2.1.4: {}
+    - script@1.1.6:
+        inputs:
+        - content: make install
+        - working_dir: "$BITRISE_SOURCE_DIR/ios/cn-app"
+        title: Install dependencies
+    - script@1.1.6:
+        title: Unit tests
+        inputs:
+        - working_dir: "$BITRISE_SOURCE_DIR/ios/cn-app/"
+        - content: make test
+    - deploy-to-bitrise-io@1.9.6: {}
+    - cache-push@2.2.3: {}
+    description: |-
+      This workflow is used to check that the project is in a compilable state and that the unit tests are running successfully.
+      It consists of updating all dependencies (npm & pods) and running the unit tests. Code signing is not used in this workflow.
+  build_hml_prd_qxx:
+    steps:
+    - activate-ssh-key@4.0.5: {}
+    - git-clone@4.0.18:
+        inputs:
+        - update_submodules: 'no'
+    - cache-pull@2.1.4: {}
+    - script@1.1.6:
+        inputs:
+        - working_dir: "$BITRISE_SOURCE_DIR/ios/cn-app"
+        - content: make install
+        title: Install dependencies
+    - script@1.1.6:
+        inputs:
+        - working_dir: "$BITRISE_SOURCE_DIR/ios/cn-app"
+        - content: make install_certificates
+        title: Install certificates
+    - script@1.1.6:
+        inputs:
+        - working_dir: "$BITRISE_SOURCE_DIR/ios/cn-app"
+        - content: make build_hml_ipa
+        title: Build HML ipa
+    - script@1.1.6:
+        inputs:
+        - working_dir: "$BITRISE_SOURCE_DIR/ios/cn-app"
+        - content: make build_prd_ipa
+        title: Build PRD ipa
+    - script@1.1.6:
+        title: Build QXX ipa
+        inputs:
+        - working_dir: "$BITRISE_SOURCE_DIR/ios/cn-app"
+        - content: make build_qxx_ipa
+    - deploy-to-bitrise-io@1.9.6:
+        inputs:
+        - deploy_path: "$BITRISE_SOURCE_DIR/ios/cn-app/output/ipa"
+    - cache-push@2.2.3: {}
+    description: |-
+      This workflow generates the IPA file for HML, QXX and PRD environments using the Ad Hoc export method.
+      The certificates used in code signing are stored in a repo called cn-app-ios-certificates in Bitbucket. To have access to it, please talk to the System Team.
+  release_alpha:
+    steps:
+    - activate-ssh-key@4.0.5: {}
+    - git-clone@4.0.18:
+        inputs:
+        - update_submodules: 'no'
+    - script@1.1.6:
+        title: Install dependencies
+        inputs:
+        - working_dir: "$BITRISE_SOURCE_DIR/ios/cn-app"
+        - content: make install
+    - script@1.1.6:
+        title: Install certificates
+        inputs:
+        - working_dir: "$BITRISE_SOURCE_DIR/ios/cn-app"
+        - content: make install_certificates
+    - script@1.1.6:
+        inputs:
+        - working_dir: "$BITRISE_SOURCE_DIR/ios/cn-app"
+        - content: make release_prd_alpha
+        title: Release PRD Alpha
+    - script@1.1.6:
+        title: Alpha tag
+        inputs:
+        - working_dir: "$BITRISE_SOURCE_DIR/ios/cn-app"
+        - content: make tag_release_alpha
+    description: |-
+      Releases an Alpha version of the cn-app directly in Test Flight and adds a tag with version_name and build_number.
+      Currently it delivers only the PRD version.
+app:
+  envs:
+  - opts:
+      is_expand: false
+    BITRISE_PROJECT_PATH: ios/cn-app/cn-app.xcworkspace
+  - opts:
+      is_expand: false
+    BITRISE_SCHEME: HML
+  - opts:
+      is_expand: false
+    BITRISE_EXPORT_METHOD: app-store
+meta:
+  bitrise.io:
+    machine_type: performance
